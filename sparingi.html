@@ -118,6 +118,18 @@
   const sb = supabase.createClient("https://wtyxtjnkioowrgagkveu.supabase.co", "sb_publishable_Ca6_0d1RBm2j6tYghXSqxQ_KslA8cKk";
 
   const el = (id) => document.getElementById(id);
+  const RATE_LIMIT_SECONDS = 60;
+  const LAST_POST_KEY = "aw_last_post_ts";
+  
+  function canPostNow(){
+    const last = Number(localStorage.getItem(LAST_POST_KEY) || "0");
+    const now = Date.now();
+    const diff = (now - last) / 1000;
+    if(diff < RATE_LIMIT_SECONDS){
+      return { ok:false, wait: Math.ceil(RATE_LIMIT_SECONDS - diff) };
+    }
+    return { ok:true, wait:0 };
+  }
 
   function cardHTML(row){
     const time = row.match_time ? ` • ${row.match_time}` : "";
@@ -171,6 +183,11 @@
 
   async function add(){
     const team_name = el("team_name").value.trim();
+    const rate = canPostNow();
+    if(!rate.ok){
+      el("msg").innerHTML = `<span class="error">Poczekaj ${rate.wait}s przed dodaniem kolejnego ogłoszenia.</span>`;
+      return;
+    }
     const match_date = el("match_date").value;
     const match_time = el("match_time").value.trim();
     const location = el("location").value.trim();
@@ -180,6 +197,18 @@
 
     if(!team_name || !match_date || !location || !contact){
       el("msg").innerHTML = `<span class="error">Uzupełnij pola oznaczone * (nazwa, data, miejsce, kontakt).</span>`;
+      return;
+    }
+    // Minimalne długości
+    if(team_name.length < 3 || location.length < 3 || contact.length < 3){
+      el("msg").innerHTML = `<span class="error">Wpisz sensowne dane (min. 3 znaki).</span>`;
+      return;
+    }
+    
+    // Blokada linków (częsty spam)
+    const combined = `${team_name} ${location} ${contact} ${notes}`.toLowerCase();
+    if(combined.includes("http://") || combined.includes("https://") || combined.includes("www.")){
+      el("msg").innerHTML = `<span class="error">Nie wklejaj linków w ogłoszeniu.</span>`;
       return;
     }
 
