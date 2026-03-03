@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sparingi — Amatorska Warszawa</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background:#0b1220; color:#fff; }
+    header { padding: 30px 20px; text-align:center; background:#111a2e; }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    a { color:#66a3ff; text-decoration:none; }
+
+    .card { background:#121c33; border:1px solid #223255; border-radius:16px; padding:16px; margin:12px 0; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
+
+    .input { width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:#fff; }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
+    label { display:block; margin:10px 0 6px; opacity:.85; font-size:14px; }
+
+    .btn{
+      display:inline-block;
+      margin-top:12px;
+      padding:10px 14px;
+      background:#66a3ff;
+      color:#fff;
+      border-radius:10px;
+      font-weight:bold;
+      cursor:pointer;
+      border:none;
+    }
+    .btn:hover{ background:#4d8ae6; }
+
+    .pill { display:inline-block; padding:4px 10px; border:1px solid rgba(255,255,255,.14); border-radius:999px; font-size:12px; opacity:.85; }
+    .muted{opacity:.75}
+    .error{color:#ff8a8a}
+    .ok{color:#9dffb0}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Sparingi</h1>
+  <p class="muted">Dodaj ogłoszenie i znajdź drużynę na sparing w Warszawie.</p>
+  <p><a href="index.html">← Wróć na stronę główną</a></p>
+</header>
+
+<div class="wrap">
+
+  <div class="card">
+    <h2>Dodaj ogłoszenie</h2>
+
+    <div class="row">
+      <div>
+        <label>Nazwa drużyny *</label>
+        <input id="team_name" class="input" placeholder="NGKS Betoniarze" />
+      </div>
+      <div>
+        <label>Kontakt *</label>
+        <input id="contact" class="input" placeholder="IG / telefon / mail" />
+      </div>
+    </div>
+
+    <div class="row3">
+      <div>
+        <label>Data *</label>
+        <input id="match_date" class="input" type="date" />
+      </div>
+      <div>
+        <label>Godzina</label>
+        <input id="match_time" class="input" placeholder="np. 19:30" />
+      </div>
+      <div>
+        <label>Poziom / liga</label>
+        <input id="level" class="input" placeholder="np. B-klasa / 6 liga" />
+      </div>
+    </div>
+
+    <label>Miejsce / dzielnica / boisko *</label>
+    <input id="location" class="input" placeholder="np. Mokotów / Agrykola" />
+
+    <label>Opis</label>
+    <input id="notes" class="input" placeholder="np. 2x30, szukamy w tygodniu, najlepiej wieczorem..." />
+
+    <button class="btn" id="addBtn">Dodaj ogłoszenie</button>
+    <div id="msg" class="muted" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>Filtry</h2>
+    <div class="row">
+      <div>
+        <label>Od daty</label>
+        <input id="from_date" class="input" type="date" />
+      </div>
+      <div>
+        <label>Szukaj po miejscu</label>
+        <input id="q_location" class="input" placeholder="np. Mokotów" />
+      </div>
+    </div>
+    <button class="btn" id="refreshBtn">Odśwież listę</button>
+  </div>
+
+  <div class="card">
+    <h2>Ogłoszenia</h2>
+    <div id="list" class="grid"></div>
+    <div id="empty" class="muted" style="margin-top:10px; display:none;">Brak ogłoszeń — dodaj pierwsze 👆</div>
+  </div>
+
+</div>
+
+<!-- Supabase client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // 1) PODMIEŃ TO
+  const SUPABASE_URL = "https://wtyxtjnkioowrgagkveu.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_Ca6_0d1RBm2j6tYghXSqxQ_KslA8cKk";
+
+  const sb = supabase.createClient("https://wtyxtjnkioowrgagkveu.supabase.co", "sb_publishable_Ca6_0d1RBm2j6tYghXSqxQ_KslA8cKk";
+
+  const el = (id) => document.getElementById(id);
+
+  function cardHTML(row){
+    const time = row.match_time ? ` • ${row.match_time}` : "";
+    const level = row.level ? `<span class="pill">${escapeHtml(row.level)}</span>` : "";
+    return `
+      <div class="card" style="margin:0;">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+          <div>
+            <h3 style="margin:0 0 6px;">${escapeHtml(row.team_name)}</h3>
+            <div class="muted">${escapeHtml(row.match_date)}${time}</div>
+          </div>
+          ${level}
+        </div>
+        <div style="margin-top:10px;"><b>Miejsce:</b> ${escapeHtml(row.location)}</div>
+        <div style="margin-top:6px;"><b>Kontakt:</b> ${escapeHtml(row.contact)}</div>
+        ${row.notes ? `<div class="muted" style="margin-top:10px;">${escapeHtml(row.notes)}</div>` : ""}
+      </div>
+    `;
+  }
+
+  function escapeHtml(s){
+    return String(s || "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  async function load(){
+    el("msg").textContent = "Ładuję ogłoszenia...";
+    const from = el("from_date").value;
+    const qLoc = el("q_location").value.trim().toLowerCase();
+
+    let query = sb.from("sparingi").select("*").order("match_date", { ascending: true });
+
+    if(from) query = query.gte("match_date", from);
+
+    const { data, error } = await query;
+    if(error){
+      el("msg").innerHTML = `<span class="error">Błąd: ${escapeHtml(error.message)}</span>`;
+      return;
+    }
+
+    const filtered = (data || []).filter(r => {
+      if(!qLoc) return true;
+      return (r.location || "").toLowerCase().includes(qLoc);
+    });
+
+    el("list").innerHTML = filtered.map(cardHTML).join("");
+    el("empty").style.display = filtered.length ? "none" : "block";
+    el("msg").textContent = "";
+  }
+
+  async function add(){
+    const team_name = el("team_name").value.trim();
+    const match_date = el("match_date").value;
+    const match_time = el("match_time").value.trim();
+    const location = el("location").value.trim();
+    const level = el("level").value.trim();
+    const contact = el("contact").value.trim();
+    const notes = el("notes").value.trim();
+
+    if(!team_name || !match_date || !location || !contact){
+      el("msg").innerHTML = `<span class="error">Uzupełnij pola oznaczone * (nazwa, data, miejsce, kontakt).</span>`;
+      return;
+    }
+
+    el("msg").textContent = "Dodaję...";
+    const { error } = await sb.from("sparingi").insert([{
+      team_name, match_date, match_time: match_time || null,
+      location, level: level || null, contact, notes: notes || null
+    }]);
+
+    if(error){
+      el("msg").innerHTML = `<span class="error">Błąd: ${escapeHtml(error.message)}</span>`;
+      return;
+    }
+
+    el("msg").innerHTML = `<span class="ok">Dodane ✅</span>`;
+    el("team_name").value = "";
+    el("match_date").value = "";
+    el("match_time").value = "";
+    el("location").value = "";
+    el("level").value = "";
+    el("contact").value = "";
+    el("notes").value = "";
+    await load();
+  }
+
+  el("addBtn").addEventListener("click", add);
+  el("refreshBtn").addEventListener("click", load);
+
+  load();
+</script>
+</body>
+</html>
