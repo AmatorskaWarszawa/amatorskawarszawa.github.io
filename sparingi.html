@@ -59,6 +59,7 @@
         <input id="contact" class="input" placeholder="IG / telefon / mail" />
       </div>
     </div>
+    
 
     <div class="row3">
       <div>
@@ -83,6 +84,12 @@
 
     <button class="btn" id="addBtn">Dodaj ogłoszenie</button>
     <div id="msg" class="muted" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>Usuń ogłoszenie</h2>
+    <input id="delete_code_input" class="input" placeholder="Wpisz kod usunięcia" />
+    <button class="btn" id="deleteBtn">Usuń ogłoszenie</button>
   </div>
 
   <div class="card">
@@ -111,16 +118,17 @@
 <!-- Supabase client -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  // 1) PODMIEŃ TO
+  const el = (id) => document.getElementById(id);
+
+  // 1) PODMIEŃ TO (zostaw jak masz)
   const SUPABASE_URL = "https://wtyxtjnkioowrgagkveu.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_Ca6_0d1RBm2j6tYghXSqxQ_KslA8cKk";
 
-  const sb = supabase.createClient("https://wtyxtjnkioowrgagkveu.supabase.co", "sb_publishable_Ca6_0d1RBm2j6tYghXSqxQ_KslA8cKk";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  const el = (id) => document.getElementById(id);
   const RATE_LIMIT_SECONDS = 60;
   const LAST_POST_KEY = "aw_last_post_ts";
-  
+
   function canPostNow(){
     const last = Number(localStorage.getItem(LAST_POST_KEY) || "0");
     const now = Date.now();
@@ -129,6 +137,25 @@
       return { ok:false, wait: Math.ceil(RATE_LIMIT_SECONDS - diff) };
     }
     return { ok:true, wait:0 };
+  }
+
+  async function deletePost(){
+    const code = el("delete_code_input").value.trim();
+    if(!code){
+      el("msg").innerHTML = `<span class="error">Podaj kod.</span>`;
+      return;
+    }
+
+    const { error } = await sb.from("sparingi").delete().eq("delete_code", code);
+
+    if(error){
+      el("msg").innerHTML = `<span class="error">${escapeHtml(error.message)}</span>`;
+      return;
+    }
+
+    el("msg").innerHTML = `<span class="ok">Ogłoszenie usunięte ✅</span>`;
+    el("delete_code_input").value = "";
+    await load();
   }
 
   function cardHTML(row){
@@ -162,7 +189,6 @@
     const qLoc = el("q_location").value.trim().toLowerCase();
 
     let query = sb.from("sparingi").select("*").order("match_date", { ascending: true });
-
     if(from) query = query.gte("match_date", from);
 
     const { data, error } = await query;
@@ -183,11 +209,13 @@
 
   async function add(){
     const team_name = el("team_name").value.trim();
+
     const rate = canPostNow();
     if(!rate.ok){
       el("msg").innerHTML = `<span class="error">Poczekaj ${rate.wait}s przed dodaniem kolejnego ogłoszenia.</span>`;
       return;
     }
+
     const match_date = el("match_date").value;
     const match_time = el("match_time").value.trim();
     const location = el("location").value.trim();
@@ -199,23 +227,30 @@
       el("msg").innerHTML = `<span class="error">Uzupełnij pola oznaczone * (nazwa, data, miejsce, kontakt).</span>`;
       return;
     }
-    // Minimalne długości
+
     if(team_name.length < 3 || location.length < 3 || contact.length < 3){
       el("msg").innerHTML = `<span class="error">Wpisz sensowne dane (min. 3 znaki).</span>`;
       return;
     }
-    
-    // Blokada linków (częsty spam)
+
     const combined = `${team_name} ${location} ${contact} ${notes}`.toLowerCase();
     if(combined.includes("http://") || combined.includes("https://") || combined.includes("www.")){
       el("msg").innerHTML = `<span class="error">Nie wklejaj linków w ogłoszeniu.</span>`;
       return;
     }
 
+    const delete_code = Math.random().toString(36).substring(2, 8);
+
     el("msg").textContent = "Dodaję...";
     const { error } = await sb.from("sparingi").insert([{
-      team_name, match_date, match_time: match_time || null,
-      location, level: level || null, contact, notes: notes || null
+      team_name,
+      match_date,
+      match_time: match_time || null,
+      location,
+      level: level || null,
+      contact,
+      notes: notes || null,
+      delete_code
     }]);
 
     if(error){
@@ -223,7 +258,11 @@
       return;
     }
 
-    el("msg").innerHTML = `<span class="ok">Dodane ✅</span>`;
+    // ✅ zapis do antyspamu
+    localStorage.setItem(LAST_POST_KEY, String(Date.now()));
+
+    el("msg").innerHTML = `<span class="ok">Dodane ✅<br>Twój kod usunięcia: <b>${delete_code}</b><br>Zapisz go — bez niego nie usuniesz ogłoszenia.</span>`;
+
     el("team_name").value = "";
     el("match_date").value = "";
     el("match_time").value = "";
@@ -231,11 +270,14 @@
     el("level").value = "";
     el("contact").value = "";
     el("notes").value = "";
+
     await load();
   }
 
+  // ✅ event listenery na końcu (ważne)
   el("addBtn").addEventListener("click", add);
   el("refreshBtn").addEventListener("click", load);
+  el("deleteBtn").addEventListener("click", deletePost);
 
   load();
 </script>
