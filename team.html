@@ -14,9 +14,16 @@
     .row { display:flex; gap:14px; align-items:center; }
     .logo { width:90px; height:90px; border-radius:16px; object-fit:cover; background:#0b1220; border:1px solid rgba(255,255,255,0.08); }
     .muted{opacity:.8}
-    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
     .pill { display:inline-block; padding:4px 10px; border:1px solid rgba(255,255,255,.14); border-radius:999px; font-size:12px; opacity:.85; }
     .error{color:#ff8a8a}
+
+    /* proste tabelki */
+    table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:12px; border:1px solid rgba(255,255,255,.10); }
+    th, td { padding:10px 12px; text-align:left; border-bottom:1px solid rgba(255,255,255,.08); font-size:14px; }
+    th { background: rgba(255,255,255,.04); opacity:.9; }
+    tr:last-child td { border-bottom:none; }
+    .right { text-align:right; }
+    .small { font-size:12px; opacity:.8; }
   </style>
 </head>
 <body>
@@ -43,12 +50,12 @@
 
   <div class="card">
     <h2 style="margin-top:0;">Zawodnicy</h2>
-    <div id="players" class="muted">Wkrótce — dodamy tabelę zawodników.</div>
+    <div id="players" class="muted">Ładuję zawodników...</div>
   </div>
 
   <div class="card">
     <h2 style="margin-top:0;">Ostatnie wyniki</h2>
-    <div id="results" class="muted">Wkrótce — dodamy tabelę wyników.</div>
+    <div id="results" class="muted">Ładuję wyniki...</div>
   </div>
 
 </div>
@@ -72,43 +79,160 @@
     return url.searchParams.get("id");
   }
 
-  async function loadTeam(){
+  function formatDate(d){
+    // d jest np. "2026-03-10"
+    if(!d) return "";
+    const [y,m,day] = String(d).split("-");
+    if(!y || !m || !day) return String(d);
+    return `${day}.${m}.${y}`;
+  }
+
+  function playersTable(players){
+    if(!players || players.length === 0){
+      return `<div class="muted">Brak zawodników (jeszcze) 😉</div>`;
+    }
+    return `
+      <table>
+        <thead>
+          <tr>
+            <th style="width:70px;">#</th>
+            <th>Zawodnik</th>
+            <th style="width:140px;">Pozycja</th>
+            <th style="width:120px;">Rocznik</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${players.map(p => `
+            <tr>
+              <td>${p.number ?? ""}</td>
+              <td><b>${escapeHtml(p.full_name)}</b>${p.notes ? `<div class="small">${escapeHtml(p.notes)}</div>` : ""}</td>
+              <td>${escapeHtml(p.position || "")}</td>
+              <td>${p.birth_year ?? ""}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function resultsTable(matches, teamId){
+    if(!matches || matches.length === 0){
+      return `<div class="muted">Brak wyników (jeszcze) 😉</div>`;
+    }
+
+    return `
+      <table>
+        <thead>
+          <tr>
+            <th style="width:120px;">Data</th>
+            <th>Mecz</th>
+            <th style="width:110px;" class="right">Wynik</th>
+            <th style="width:160px;">Liga</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${matches.map(m => {
+            const isHome = String(m.home_team_id) === String(teamId);
+            const score = (m.home_score == null || m.away_score == null) ? "—" : `${m.home_score}:${m.away_score}`;
+            const oppName = isHome ? m.away_team_name : m.home_team_name;
+            const vs = isHome ? `vs ${oppName}` : `@ ${oppName}`;
+            return `
+              <tr>
+                <td>${formatDate(m.match_date)}</td>
+                <td>
+                  <div><b>${escapeHtml(vs)}</b></div>
+                  ${m.location ? `<div class="small">${escapeHtml(m.location)}</div>` : ""}
+                </td>
+                <td class="right"><b>${escapeHtml(score)}</b></td>
+                <td>${escapeHtml(m.league || "")}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  async function loadTeamAndData(){
     const id = getTeamId();
     if(!id){
       el("status").innerHTML = `<span class="error">Brak ID drużyny w linku.</span>`;
+      el("players").textContent = "";
+      el("results").textContent = "";
       return;
     }
 
     el("status").textContent = "Ładuję profil drużyny...";
 
-    const { data, error } = await sb
+    // 1) Drużyna
+    const { data: team, error: teamErr } = await sb
       .from("teams")
       .select("id, team_name, description, contact, logo_url")
       .eq("id", id)
       .single();
 
-    if(error){
-      el("status").innerHTML = `<span class="error">Błąd: ${escapeHtml(error.message)}</span>`;
+    if(teamErr){
+      el("status").innerHTML = `<span class="error">Błąd: ${escapeHtml(teamErr.message)}</span>`;
+      el("players").textContent = "";
+      el("results").textContent = "";
       return;
     }
 
     el("status").textContent = "";
     el("teamCard").style.display = "block";
 
-    el("title").textContent = data.team_name;
-    el("name").textContent = data.team_name;
-    el("desc").textContent = data.description || "";
-    el("contact").innerHTML = data.contact ? `<span class="pill">Kontakt</span> ${escapeHtml(data.contact)}` : "";
+    el("title").textContent = team.team_name;
+    el("name").textContent = team.team_name;
+    el("desc").textContent = team.description || "";
+    el("contact").innerHTML = team.contact ? `<span class="pill">Kontakt</span> ${escapeHtml(team.contact)}` : "";
 
-    if(data.logo_url){
-      el("logo").src = data.logo_url;
+    if(team.logo_url){
+      el("logo").src = team.logo_url;
       el("logo").style.display = "block";
     } else {
       el("logo").style.display = "none";
     }
+
+    // 2) Zawodnicy
+    const { data: players, error: playersErr } = await sb
+      .from("players")
+      .select("id, team_id, full_name, position, number, birth_year, notes")
+      .eq("team_id", id)
+      .order("number", { ascending: true });
+
+    if(playersErr){
+      el("players").innerHTML = `<span class="error">Błąd zawodników: ${escapeHtml(playersErr.message)}</span>`;
+    } else {
+      el("players").innerHTML = playersTable(players);
+    }
+
+    // 3) Wyniki (matches) + dołączenie nazw drużyn (dwa joiny przez aliasy)
+    const { data: matches, error: matchesErr } = await sb
+      .from("matches")
+      .select(`
+        id, match_date, league, location, notes,
+        home_team_id, away_team_id, home_score, away_score,
+        home:home_team_id ( team_name ),
+        away:away_team_id ( team_name )
+      `)
+      .or(`home_team_id.eq.${id},away_team_id.eq.${id}`)
+      .order("match_date", { ascending: false })
+      .limit(10);
+
+    if(matchesErr){
+      el("results").innerHTML = `<span class="error">Błąd wyników: ${escapeHtml(matchesErr.message)}</span>`;
+    } else {
+      // spłaszczamy nazwy z joinów
+      const normalized = (matches || []).map(m => ({
+        ...m,
+        home_team_name: m.home?.team_name || "Gospodarze",
+        away_team_name: m.away?.team_name || "Goście",
+      }));
+      el("results").innerHTML = resultsTable(normalized, id);
+    }
   }
 
-  loadTeam();
+  loadTeamAndData();
 </script>
 </body>
 </html>
