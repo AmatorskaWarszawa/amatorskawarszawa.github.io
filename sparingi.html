@@ -193,7 +193,7 @@
 
     const { data, error } = await query;
     if(error){
-      el("msg").innerHTML = `<span class="error">Błąd: ${escapeHtml(error.message)}</span>`;
+      console.error(error);
       return;
     }
 
