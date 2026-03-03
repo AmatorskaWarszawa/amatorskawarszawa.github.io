@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin — Amatorska Warszawa</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background:#0b1220; color:#fff; }
+    header { padding: 30px 20px; text-align:center; background:#111a2e; }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    a { color:#66a3ff; text-decoration:none; }
+    .card { background:#121c33; border:1px solid #223255; border-radius:16px; padding:16px; margin:12px 0; }
+    .btn{
+      display:inline-block;
+      padding:8px 12px;
+      background:#66a3ff;
+      color:#fff;
+      border-radius:10px;
+      font-weight:bold;
+      cursor:pointer;
+      border:none;
+      margin-right:8px;
+    }
+    .btn:hover{ background:#4d8ae6; }
+    .btn.red{ background:#ff5c5c; }
+    .btn.red:hover{ background:#e54b4b; }
+    .input { width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:#fff; }
+    .muted{opacity:.75}
+    .error{color:#ff8a8a}
+    .ok{color:#9dffb0}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Panel admina</h1>
+  <p class="muted">Akceptuj zgłoszenia drużyn.</p>
+  <p><a href="index.html">← Wróć na stronę główną</a></p>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>Dostęp</h2>
+    <p class="muted">Wpisz kod admina (lokalnie w przeglądarce).</p>
+    <input id="admin_code" class="input" placeholder="Kod admina" />
+    <button class="btn" id="unlockBtn">Odblokuj</button>
+    <div id="msg" class="muted" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card" id="panel" style="display:none;">
+    <h2>Zgłoszenia (pending)</h2>
+    <div id="list"></div>
+    <div id="empty" class="muted" style="display:none;">Brak zgłoszeń ✅</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const el = (id) => document.getElementById(id);
+
+  // Wklej swoje:
+  const SUPABASE_URL = "https://wtyxtjnkioowrgagkveu.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_Ca6_0d1RBm2j6tYghXSqxQ_KslA8cKk";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // USTAW SWÓJ KOD (zmień na coś trudniejszego)
+  const ADMIN_CODE = "Bibiczek912";
+
+  function escapeHtml(s){
+    return String(s || "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  function renderRow(row){
+    return `
+      <div class="card" style="margin:12px 0;">
+        <div><b>${escapeHtml(row.team_name)}</b></div>
+        <div class="muted" style="margin-top:6px;"><b>Kontakt:</b> ${escapeHtml(row.contact)}</div>
+        ${row.description ? `<div class="muted" style="margin-top:6px;"><b>Opis:</b> ${escapeHtml(row.description)}</div>` : ""}
+        <div style="margin-top:10px;">
+          <button class="btn" onclick="approve(${row.id})">Akceptuj</button>
+          <button class="btn red" onclick="reject(${row.id})">Odrzuć</button>
+        </div>
+      </div>
+    `;
+  }
+
+  async function load(){
+    const { data, error } = await sb
+      .from("team_applications")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if(error){
+      el("msg").innerHTML = `<span class="error">Błąd: ${escapeHtml(error.message)}</span>`;
+      return;
+    }
+
+    el("list").innerHTML = (data || []).map(renderRow).join("");
+    el("empty").style.display = (data && data.length) ? "none" : "block";
+  }
+
+  // Akceptacja: dodaj do teams + zmień status
+  window.approve = async (id) => {
+    // 1) pobierz zgłoszenie
+    const { data: rows, error: e1 } = await sb
+      .from("team_applications")
+      .select("*")
+      .eq("id", id)
+      .limit(1);
+
+    if(e1 || !rows || !rows[0]){
+      el("msg").innerHTML = `<span class="error">Nie mogę pobrać zgłoszenia.</span>`;
+      return;
+    }
+
+    const app = rows[0];
+
+    // 2) wpisz do teams
+    const { error: e2 } = await sb.from("teams").insert([{
+      team_name: app.team_name,
+      description: app.description || null,
+      contact: app.contact,
+      logo_url: null
+    }]);
+
+    if(e2){
+      el("msg").innerHTML = `<span class="error">Błąd dodania do teams: ${escapeHtml(e2.message)}</span>`;
+      return;
+    }
+
+    // 3) zmień status zgłoszenia
+    const { error: e3 } = await sb.from("team_applications")
+      .update({ status: "approved", reviewed_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if(e3){
+      el("msg").innerHTML = `<span class="error">Błąd statusu: ${escapeHtml(e3.message)}</span>`;
+      return;
+    }
+
+    el("msg").innerHTML = `<span class="ok">Zaakceptowano ✅</span>`;
+    await load();
+  };
+
+  window.reject = async (id) => {
+    const { error } = await sb.from("team_applications")
+      .update({ status: "rejected", reviewed_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if(error){
+      el("msg").innerHTML = `<span class="error">Błąd: ${escapeHtml(error.message)}</span>`;
+      return;
+    }
+    el("msg").innerHTML = `<span class="ok">Odrzucono ✅</span>`;
+    await load();
+  };
+
+  function unlock(){
+    const code = el("admin_code").value.trim();
+    if(code !== ADMIN_CODE){
+      el("msg").innerHTML = `<span class="error">Zły kod.</span>`;
+      return;
+    }
+    el("msg").innerHTML = `<span class="ok">Odblokowano ✅</span>`;
+    el("panel").style.display = "block";
+    load();
+  }
+
+  el("unlockBtn").addEventListener("click", unlock);
+</script>
+</body>
+</html>
