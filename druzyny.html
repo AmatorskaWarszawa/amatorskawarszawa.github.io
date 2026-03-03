@@ -9,9 +9,7 @@
     header { padding: 30px 20px; text-align:center; background:#111a2e; }
     .wrap { max-width: 1000px; margin: 0 auto; padding: 20px; }
     a { color:#66a3ff; text-decoration:none; }
-
     .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; }
-
     .team-card{
       background:#121c33;
       border:1px solid #223255;
@@ -20,10 +18,7 @@
       display:flex;
       gap:14px;
       align-items:center;
-      transition:0.25s;
     }
-    .team-card:hover{ transform: translateY(-4px); border-color:#66a3ff; }
-
     .team-logo{
       width:70px;
       height:70px;
@@ -33,52 +28,72 @@
       border:1px solid rgba(255,255,255,0.08);
       flex: 0 0 70px;
     }
-
     .team-name{ margin:0; font-size:18px; }
     .team-meta{ margin:6px 0 0; opacity:.8; font-size:14px; }
-
-    .btn{
-      display:inline-block;
-      margin-top:10px;
-      padding:10px 14px;
-      background:#66a3ff;
-      color:#fff;
-      border-radius:10px;
-      font-weight:bold;
-    }
-    .btn:hover{ background:#4d8ae6; }
+    .muted{opacity:.75}
+    .card { background:#121c33; border:1px solid #223255; border-radius:16px; padding:16px; margin:12px 0; }
   </style>
 </head>
 <body>
 
 <header>
   <h1>Baza drużyn</h1>
-  <p>Tu będzie lista amatorskich drużyn z Warszawy.</p>
+  <p class="muted">Zaakceptowane drużyny z Warszawy.</p>
   <p><a href="index.html">← Wróć na stronę główną</a></p>
+  <p><a href="zglos-druzyne.html">+ Zgłoś drużynę</a></p>
 </header>
 
 <div class="wrap">
-
-  <div class="grid">
-
-    <!-- DRUŻYNA 1 -->
-    <div class="team-card">
-      <!-- ZMIEN NA NAZWE PLIKU Z LOGO -->
-      <img class="team-logo" src="ngks-betoniarze.jpg" alt="NGKS Betoniarze logo" />
-
-      <div>
-        <h2 class="team-name">NGKS Betoniarze</h2>
-        <p class="team-meta">Warszawa • (liga do uzupełnienia)</p>
-        <!-- Na razie może nie prowadzić nigdzie, potem zrobimy profil drużyny -->
-        <a class="btn" href="#">Zobacz profil (wkrótce)</a>
-      </div>
-    </div>
-
-    <!-- TUTAJ DODASZ KOLEJNE DRUŻYNY W TEN SAM SPOSÓB -->
-
+  <div class="card">
+    <div id="msg" class="muted">Ładuję drużyny...</div>
   </div>
 
+  <div class="grid" id="list"></div>
+  <div id="empty" class="muted" style="margin-top:10px; display:none;">Brak drużyn — dodaj pierwszą przez zgłoszenie 👆</div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const el = (id) => document.getElementById(id);
+
+  const SUPABASE_URL = "https://wtyxtjnkioowrgagkveu.supabase.co";
+  const SUPABASE_ANON_KEY = "TU_WKLEJ_PUBLISHABLE_KEY";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  function escapeHtml(s){
+    return String(s || "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  function card(team){
+    const logo = team.logo_url ? team.logo_url : "https://dummyimage.com/140x140/0b1220/ffffff&text=AW";
+    return `
+      <div class="team-card">
+        <img class="team-logo" src="${escapeHtml(logo)}" alt="logo ${escapeHtml(team.team_name)}" />
+        <div>
+          <h2 class="team-name">${escapeHtml(team.team_name)}</h2>
+          <p class="team-meta">${team.description ? escapeHtml(team.description) : "Opis wkrótce."}</p>
+          <p class="team-meta"><b>Kontakt:</b> ${escapeHtml(team.contact || "—")}</p>
+        </div>
+      </div>
+    `;
+  }
+
+  async function load(){
+    const { data, error } = await sb.from("teams").select("*").order("created_at", { ascending: false });
+
+    if(error){
+      el("msg").textContent = "Błąd: " + error.message;
+      return;
+    }
+
+    el("msg").textContent = "";
+    el("list").innerHTML = (data || []).map(card).join("");
+    el("empty").style.display = (data && data.length) ? "none" : "block";
+  }
+
+  load();
+</script>
 </body>
 </html>
