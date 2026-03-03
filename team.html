@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Drużyna — Amatorska Warszawa</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background:#0b1220; color:#fff; }
+    header { padding: 30px 20px; text-align:center; background:#111a2e; }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    a { color:#66a3ff; text-decoration:none; }
+
+    .card { background:#121c33; border:1px solid #223255; border-radius:16px; padding:16px; margin:12px 0; }
+    .row { display:flex; gap:14px; align-items:center; }
+    .logo { width:90px; height:90px; border-radius:16px; object-fit:cover; background:#0b1220; border:1px solid rgba(255,255,255,0.08); }
+    .muted{opacity:.8}
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
+    .pill { display:inline-block; padding:4px 10px; border:1px solid rgba(255,255,255,.14); border-radius:999px; font-size:12px; opacity:.85; }
+    .error{color:#ff8a8a}
+  </style>
+</head>
+<body>
+
+<header>
+  <h1 id="title">Drużyna</h1>
+  <p class="muted"><a href="druzyny.html">← Wróć do bazy drużyn</a></p>
+</header>
+
+<div class="wrap">
+
+  <div id="status" class="muted"></div>
+
+  <div class="card" id="teamCard" style="display:none;">
+    <div class="row">
+      <img id="logo" class="logo" alt="Logo drużyny" />
+      <div>
+        <h2 id="name" style="margin:0;"></h2>
+        <div id="desc" class="muted" style="margin-top:6px;"></div>
+        <div id="contact" class="muted" style="margin-top:6px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Zawodnicy</h2>
+    <div id="players" class="muted">Wkrótce — dodamy tabelę zawodników.</div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Ostatnie wyniki</h2>
+    <div id="results" class="muted">Wkrótce — dodamy tabelę wyników.</div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = "https://wtyxtjnkioowrgagkveu.supabase.co";
+  const SUPABASE_ANON_KEY = "TU_WKLEJ_SWÓJ_publishable_anon_key";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const el = (id) => document.getElementById(id);
+
+  function escapeHtml(s){
+    return String(s || "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  function getTeamId(){
+    const url = new URL(window.location.href);
+    return url.searchParams.get("id");
+  }
+
+  async function loadTeam(){
+    const id = getTeamId();
+    if(!id){
+      el("status").innerHTML = `<span class="error">Brak ID drużyny w linku.</span>`;
+      return;
+    }
+
+    el("status").textContent = "Ładuję profil drużyny...";
+
+    const { data, error } = await sb
+      .from("teams")
+      .select("id, team_name, description, contact, logo_url")
+      .eq("id", id)
+      .single();
+
+    if(error){
+      el("status").innerHTML = `<span class="error">Błąd: ${escapeHtml(error.message)}</span>`;
+      return;
+    }
+
+    el("status").textContent = "";
+    el("teamCard").style.display = "block";
+
+    el("title").textContent = data.team_name;
+    el("name").textContent = data.team_name;
+    el("desc").textContent = data.description || "";
+    el("contact").innerHTML = data.contact ? `<span class="pill">Kontakt</span> ${escapeHtml(data.contact)}` : "";
+
+    if(data.logo_url){
+      el("logo").src = data.logo_url;
+      el("logo").style.display = "block";
+    } else {
+      el("logo").style.display = "none";
+    }
+  }
+
+  loadTeam();
+</script>
+</body>
+</html>
