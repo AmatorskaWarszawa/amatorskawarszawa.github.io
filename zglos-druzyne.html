@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zgłoś drużynę — Amatorska Warszawa</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background:#0b1220; color:#fff; }
+    header { padding: 30px 20px; text-align:center; background:#111a2e; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
+    a { color:#66a3ff; text-decoration:none; }
+    .card { background:#121c33; border:1px solid #223255; border-radius:16px; padding:16px; margin:12px 0; }
+    .input { width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:#fff; }
+    label { display:block; margin:10px 0 6px; opacity:.85; font-size:14px; }
+    .btn{
+      display:inline-block;
+      margin-top:12px;
+      padding:10px 14px;
+      background:#66a3ff;
+      color:#fff;
+      border-radius:10px;
+      font-weight:bold;
+      cursor:pointer;
+      border:none;
+    }
+    .btn:hover{ background:#4d8ae6; }
+    .muted{opacity:.75}
+    .error{color:#ff8a8a}
+    .ok{color:#9dffb0}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Zgłoś drużynę</h1>
+  <p class="muted">Wyślij zgłoszenie — po weryfikacji dodamy drużynę na stronę.</p>
+  <p><a href="index.html">← Wróć na stronę główną</a></p>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>Formularz zgłoszenia</h2>
+
+    <label>Nazwa drużyny *</label>
+    <input id="team_name" class="input" placeholder="NGKS Betoniarze" />
+
+    <label>Kontakt (IG / tel / mail) *</label>
+    <input id="contact" class="input" placeholder="@ngks / 500 000 000 / mail" />
+
+    <label>Opis (opcjonalnie)</label>
+    <input id="description" class="input" placeholder="Krótki opis drużyny, liga, dzielnica..." />
+
+    <button class="btn" id="sendBtn">Wyślij zgłoszenie</button>
+    <div id="msg" class="muted" style="margin-top:10px;"></div>
+
+    <div class="muted" style="margin-top:14px;">
+      Logo dodasz po akceptacji (żeby uniknąć spamu).
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const el = (id) => document.getElementById(id);
+
+  // Wklej swoje:
+  const SUPABASE_URL = "https://wtyxtjnkioowrgagkveu.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_Ca6_0d1RBm2j6tYghXSqxQ_KslA8cKk";
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  function escapeHtml(s){
+    return String(s || "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  async function send(){
+    const team_name = el("team_name").value.trim();
+    const contact = el("contact").value.trim();
+    const description = el("description").value.trim();
+
+    if(team_name.length < 3 || contact.length < 3){
+      el("msg").innerHTML = `<span class="error">Wpisz nazwę i kontakt (min. 3 znaki).</span>`;
+      return;
+    }
+
+    // antyspam linków
+    const combined = `${team_name} ${contact} ${description}`.toLowerCase();
+    if(combined.includes("http://") || combined.includes("https://") || combined.includes("www.")){
+      el("msg").innerHTML = `<span class="error">Nie wklejaj linków w zgłoszeniu.</span>`;
+      return;
+    }
+
+    el("msg").textContent = "Wysyłam...";
+
+    const { error } = await sb.from("team_applications").insert([{
+      team_name,
+      contact,
+      description: description || null
+    }]);
+
+    if(error){
+      el("msg").innerHTML = `<span class="error">Błąd: ${escapeHtml(error.message)}</span>`;
+      return;
+    }
+
+    el("msg").innerHTML = `<span class="ok">Zgłoszenie wysłane ✅ Dzięki! Po weryfikacji dodamy drużynę.</span>`;
+    el("team_name").value = "";
+    el("contact").value = "";
+    el("description").value = "";
+  }
+
+  el("sendBtn").addEventListener("click", send);
+</script>
+</body>
+</html>
