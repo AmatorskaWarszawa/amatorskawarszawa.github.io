@@ -8,7 +8,6 @@
     body { font-family: Arial, sans-serif; margin: 0; background:#0b1220; color:#fff; }
     header { padding: 30px 20px; text-align:center; background:#111a2e; }
     .wrap { max-width: 1000px; margin: 0 auto; padding: 20px; }
-    a { color:#66a3ff; text-decoration:none; }
 
     .card { background:#121c33; border:1px solid #223255; border-radius:16px; padding:16px; margin:12px 0; }
     .row { display:flex; gap:14px; align-items:center; }
@@ -19,11 +18,13 @@
 
     /* proste tabelki */
     table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:12px; border:1px solid rgba(255,255,255,.10); }
-    th, td { padding:10px 12px; text-align:left; border-bottom:1px solid rgba(255,255,255,.08); font-size:14px; }
+    th, td { padding:10px 12px; text-align:left; border-bottom:1px solid rgba(255,255,255,.08); font-size:14px; vertical-align:middle; }
     th { background: rgba(255,255,255,.04); opacity:.9; }
     tr:last-child td { border-bottom:none; }
     .right { text-align:right; }
     .small { font-size:12px; opacity:.8; }
+    a { color:inherit; text-decoration:none; }
+    a:hover { text-decoration:underline; color:#9fc7ff; }
   </style>
 </head>
 <body>
@@ -80,7 +81,6 @@
   }
 
   function formatDate(d){
-    // d jest np. "2026-03-10"
     if(!d) return "";
     const [y,m,day] = String(d).split("-");
     if(!y || !m || !day) return String(d);
@@ -105,7 +105,12 @@
           ${players.map(p => `
             <tr>
               <td>${p.number ?? ""}</td>
-              <td><a href="player.html?id=${p.id}" style="color:inherit;text-decoration:none"><b>${escapeHtml(p.full_name)}</b></a>...</td>
+              <td>
+                <a href="player.html?id=${p.id}" title="${escapeHtml(p.full_name)}">
+                  <b>${escapeHtml(p.full_name)}</b>
+                </a>
+                ${p.notes ? `<div class="small">${escapeHtml(p.notes)}</div>` : ""}
+              </td>
               <td>${escapeHtml(p.position || "")}</td>
               <td>${p.birth_year ?? ""}</td>
             </tr>
@@ -113,6 +118,30 @@
         </tbody>
       </table>
     `;
+  }
+
+  // render czytelnego wiersza meczu (ogólny)
+  function matchLine(m){
+    const home = m.home_team?.team_name || (m.home_team_name || "Gospodarze");
+    const away = m.away_team?.team_name || (m.away_team_name || "Goście");
+    const hs = (m.home_score == null ? "—" : m.home_score);
+    const ag = (m.away_score == null ? "—" : m.away_score);
+    const league = m.league ? ` (${escapeHtml(m.league)})` : "";
+    const date = m.match_date ? escapeHtml(m.match_date) : formatDate(m.match_date);
+    return `${date} • ${escapeHtml(home)} ${hs} : ${ag} ${escapeHtml(away)}${league}`;
+  }
+
+  // render wiersza meczu z perspektywy konkretnej drużyny (dom/wyjazd tag)
+  function matchLineForTeam(m, teamId){
+    const home = m.home_team?.team_name || (m.home_team_name || "Gospodarze");
+    const away = m.away_team?.team_name || (m.away_team_name || "Goście");
+    const hs = (m.home_score == null ? "—" : m.home_score);
+    const ag = (m.away_score == null ? "—" : m.away_score);
+    const isHome = String(m.home_team?.id || m.home_team_id) === String(teamId);
+    const tag = isHome ? " (dom)" : " (wyjazd)";
+    const league = m.league ? ` (${escapeHtml(m.league)})` : "";
+    const date = m.match_date ? escapeHtml(m.match_date) : formatDate(m.match_date);
+    return `${date} • ${escapeHtml(home)} ${hs} : ${ag} ${escapeHtml(away)}${tag}${league}`;
   }
 
   function resultsTable(matches, teamId){
@@ -132,19 +161,24 @@
         </thead>
         <tbody>
           ${matches.map(m => {
-            const isHome = String(m.home_team_id) === String(teamId);
+            // wybierz sposób renderowania w zależności czy mamy teamId (widok drużyny)
+            const isTeamView = !!teamId;
+            const left = isTeamView ? matchLineForTeam(m, teamId) : matchLine(m);
+            // rozbijamy, żeby umieścić wynik i nazwy w odpowiednich kolumnach
+            // ale dla prostoty: parsujemy elementy do tabeli
+            const dateCell = formatDate(m.match_date);
+            const leagueCell = m.league ? escapeHtml(m.league) : "";
+            const homeName = m.home_team?.team_name || (m.home_team_name || "Gospodarze");
+            const awayName = m.away_team?.team_name || (m.away_team_name || "Goście");
             const score = (m.home_score == null || m.away_score == null) ? "—" : `${m.home_score}:${m.away_score}`;
-            const oppName = isHome ? m.away_team_name : m.home_team_name;
-            const vs = isHome ? `vs ${oppName}` : `@ ${oppName}`;
+            const matchHtml = `<div><b>${escapeHtml(homeName)}</b> vs <b>${escapeHtml(awayName)}</b></div>` +
+                              (m.location ? `<div class="small">${escapeHtml(m.location)}</div>` : "");
             return `
               <tr>
-                <td>${formatDate(m.match_date)}</td>
-                <td>
-                  <div><b>${escapeHtml(vs)}</b></div>
-                  ${m.location ? `<div class="small">${escapeHtml(m.location)}</div>` : ""}
-                </td>
+                <td>${dateCell}</td>
+                <td>${matchHtml}</td>
                 <td class="right"><b>${escapeHtml(score)}</b></td>
-                <td>${escapeHtml(m.league || "")}</td>
+                <td>${leagueCell}</td>
               </tr>
             `;
           }).join("")}
@@ -206,27 +240,53 @@
       el("players").innerHTML = playersTable(players);
     }
 
-    // 3) Wyniki (matches) + dołączenie nazw drużyn (dwa joiny przez aliasy)
+    // 3) Wyniki (matches) + dołączenie nazw drużyn (joiny przez relacje)
+    // Uwaga: jeśli Supabase zgłosi błąd relacji, napisz do mnie — dopasuję nazwę constraint/relacji.
     const { data: matches, error: matchesErr } = await sb
       .from("matches")
       .select(`
         id, match_date, league, location, notes,
-        home_team_id, away_team_id, home_score, away_score,
-        home:home_team_id ( team_name ),
-        away:away_team_id ( team_name )
+        home_score, away_score, home_team_id, away_team_id,
+        home_team:teams!matches_home_team_id_fkey ( id, team_name ),
+        away_team:teams!matches_away_team_id_fkey ( id, team_name )
       `)
       .or(`home_team_id.eq.${id},away_team_id.eq.${id}`)
       .order("match_date", { ascending: false })
-      .limit(10);
+      .limit(20);
 
     if(matchesErr){
-      el("results").innerHTML = `<span class="error">Błąd wyników: ${escapeHtml(matchesErr.message)}</span>`;
+      // jeśli relacje mają inną nazwę, Supabase zwróci błąd — wtedy użyjemy fallbacku (pobierz matches bez joinów)
+      console.warn("Matches select error (attempting fallback):", matchesErr);
+      // fallback: pobierz bez joinów i dopasuj nazwy ręcznie
+      const { data: matchesFallback, error: mfErr } = await sb
+        .from("matches")
+        .select("id, match_date, league, location, notes, home_score, away_score, home_team_id, away_team_id")
+        .or(`home_team_id.eq.${id},away_team_id.eq.${id}`)
+        .order("match_date", { ascending: false })
+        .limit(20);
+
+      if(mfErr){
+        el("results").innerHTML = `<span class="error">Błąd wyników: ${escapeHtml(mfErr.message)}</span>`;
+      } else {
+        // pobierz nazwy drużyn dla wszystkich home_team_id / away_team_id
+        const teamIds = Array.from(new Set([].concat(...(matchesFallback||[]).map(m => [m.home_team_id, m.away_team_id]))));
+        const { data: teamsMap } = await sb.from("teams").select("id, team_name").in("id", teamIds);
+        const namesById = {};
+        (teamsMap || []).forEach(t => namesById[t.id] = t.team_name);
+        const normalized = (matchesFallback || []).map(m => ({
+          ...m,
+          home_team_name: namesById[m.home_team_id] || "Gospodarze",
+          away_team_name: namesById[m.away_team_id] || "Goście"
+        }));
+        el("results").innerHTML = resultsTable(normalized, id);
+      }
     } else {
+      // normalny przypadek: mamy joiny i możemy wyświetlić czytelnie
       // spłaszczamy nazwy z joinów
       const normalized = (matches || []).map(m => ({
         ...m,
-        home_team_name: m.home?.team_name || "Gospodarze",
-        away_team_name: m.away?.team_name || "Goście",
+        home_team_name: m.home_team?.team_name || "Gospodarze",
+        away_team_name: m.away_team?.team_name || "Goście"
       }));
       el("results").innerHTML = resultsTable(normalized, id);
     }
