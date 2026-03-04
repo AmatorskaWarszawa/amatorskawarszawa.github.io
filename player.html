@@ -65,41 +65,91 @@
     return new URLSearchParams(location.search).get(name);
   }
 
-  function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  function escapeHtml(s){
+    return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function formatDate(d){
+    if(!d) return "";
+    const [y,m,day] = String(d).split("-");
+    if(!y || !m || !day) return String(d);
+    return `${day}.${m}.${y}`;
+  }
+
+  function matchLine(m, playerTeamId){
+    const homeName = m.home?.team_name || "Gospodarze";
+    const awayName = m.away?.team_name || "Goście";
+    const hs = (m.home_score == null ? "?" : m.home_score);
+    const as = (m.away_score == null ? "?" : m.away_score);
+    const league = m.league ? ` <span class="muted small">(${escapeHtml(m.league)})</span>` : "";
+    const tag = (String(m.home_team_id) === String(playerTeamId)) ? " <span class='muted small'>(dom)</span>" : " <span class='muted small'>(wyjazd)</span>";
+
+    return `
+      <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+        <div class="small">${formatDate(m.match_date)}</div>
+        <div><b>${escapeHtml(homeName)}</b> ${hs}:${as} <b>${escapeHtml(awayName)}</b>${tag}${league}</div>
+      </div>
+    `;
+  }
 
   async function loadPlayer(){
     const playerId = qParam("id");
     if(!playerId){ el("pname").textContent = "Brak id"; return; }
 
     // 1) pobierz podstawy zawodnika
-    const { data: player, error: pErr } = await sb.from("players").select("id, team_id, full_name, position, number, birth_year, notes, team_id").eq("id", playerId).single();
+    const { data: player, error: pErr } = await sb
+      .from("players")
+      .select("id, team_id, full_name, position, number, birth_year, notes")
+      .eq("id", playerId)
+      .single();
+
     if(pErr || !player){
       el("pname").textContent = "Nie znaleziono zawodnika";
       el("pmeta").textContent = pErr ? pErr.message : "";
       return;
     }
+
     el("pname").textContent = player.full_name;
-    el("pmeta").textContent = `${player.position ? player.position + " • " : ""}${player.number ? "#" + player.number : ""} ${player.birth_year ? "• rocznik " + player.birth_year : ""}`;
+    el("pmeta").textContent =
+      `${player.position ? player.position + " • " : ""}${player.number ? "#" + player.number : ""} ${player.birth_year ? "• rocznik " + player.birth_year : ""}`;
 
     // 2) Mecze rozegrane = count appearances where player_id = X
-    const { count: matchesCount, error: mErr } = await sb.from("appearances").select("id", { count: "exact", head: true }).eq("player_id", playerId);
+    const { count: matchesCount, error: mErr } = await sb
+      .from("appearances")
+      .select("id", { count: "exact", head: true })
+      .eq("player_id", playerId);
+
     el("stat_matches").textContent = (mErr ? "0" : (matchesCount || 0));
 
-    // 3) Gole = count match_events where player_id=X and event_type='goal'
-    const { count: goalsCount, error: gErr } = await sb.from("match_events").select("id", { count: "exact", head: true }).eq("player_id", playerId).eq("event_type", "goal");
+    // 3) Gole
+    const { count: goalsCount, error: gErr } = await sb
+      .from("match_events")
+      .select("id", { count: "exact", head: true })
+      .eq("player_id", playerId)
+      .eq("event_type", "goal");
+
     el("stat_goals").textContent = (gErr ? "0" : (goalsCount || 0));
 
-    // 4) Asysty = count match_events where event_type='assist'
-    const { count: assistsCount, error: aErr } = await sb.from("match_events").select("id", { count: "exact", head: true }).eq("player_id", playerId).eq("event_type", "assist");
+    // 4) Asysty
+    const { count: assistsCount, error: aErr } = await sb
+      .from("match_events")
+      .select("id", { count: "exact", head: true })
+      .eq("player_id", playerId)
+      .eq("event_type", "assist");
+
     el("stat_assists").textContent = (aErr ? "0" : (assistsCount || 0));
 
-    // 5) Ostatnie mecze: pobierz matches powiązane z appearances (JOIN)
+    // 5) Ostatnie mecze: appearances -> matches + nazwy obu drużyn
     const { data: recent, error: rErr } = await sb
       .from("appearances")
       .select(`
-        match_id,
-        match:matches(id, match_date, home_team_id, away_team_id, home_score, away_score, league),
-        team:teams(id, team_name)
+        created_at,
+        match:matches(
+          id, match_date, league,
+          home_team_id, away_team_id, home_score, away_score,
+          home:home_team_id ( team_name ),
+          away:away_team_id ( team_name )
+        )
       `)
       .eq("player_id", playerId)
       .order("created_at", { ascending: false })
@@ -107,20 +157,18 @@
 
     if(rErr){
       el("recentMatches").textContent = "Błąd ładowania meczów: " + rErr.message;
-    } else if(!recent || recent.length === 0){
-      el("recentMatches").textContent = "Brak zapisanych meczów (appearances).";
-    } else {
-      el("recentMatches").innerHTML = recent.map(r => {
-        const m = r.match;
-        const teamSide = r.team;
-        const vs = (m.home_team_id === teamSide.id) ? `vs ${escapeHtml(m.away_team_id ? String(m.away_team_id) : "—")}` : `@ ${escapeHtml(m.home_team_id ? String(m.home_team_id) : "—")}`;
-        // NOTE: jeśli chcesz nazwy przeciwnika, można rozszerzyć query do dołączenia nazw drużyn (jak w team.html)
-        return `<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-          <div class="small">${m.match_date}</div>
-          <div><b>${escapeHtml(teamSide.team_name)}</b> ${vs} — ${m.home_score ?? "?"}:${m.away_score ?? "?"} <span class="muted small">(${escapeHtml(m.league||"")})</span></div>
-        </div>`;
-      }).join("");
+      return;
     }
+
+    if(!recent || recent.length === 0){
+      el("recentMatches").textContent = "Brak zapisanych meczów (appearances).";
+      return;
+    }
+
+    el("recentMatches").innerHTML = recent
+      .filter(r => r.match)
+      .map(r => matchLine(r.match, player.team_id))
+      .join("");
   }
 
   loadPlayer();
